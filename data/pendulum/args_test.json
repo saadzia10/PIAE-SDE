@@ -1,0 +1,29 @@
+{
+    "dt": 0.05,
+    "len_episode": 50,
+    "n_samples": 1000,
+    "name": "test",
+    "noise_std": 0.01,
+    "outdir": "./",
+    "range_A": [
+        0.0,
+        40.0
+    ],
+    "range_f": [
+        3.14,
+        6.28
+    ],
+    "range_gamma": [
+        0.0,
+        0.8
+    ],
+    "range_init": [
+        -1.57,
+        1.57
+    ],
+    "range_omega": [
+        0.785,
+        3.14
+    ],
+    "seed": 1236
+}
