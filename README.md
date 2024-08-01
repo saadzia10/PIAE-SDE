@@ -1,5 +1,11 @@
-# Physics-integrated variational autoencoders for robust and interpretable generative modeling
+# PI-VAE Climate Flux Data
+### Implementation by Corentin Houpert and Saad Zia
 
+This is an extension on the work by Naoya Takeishi and Alexandros Kalousis. We are extending it for a climate-related problem of predicting NEE (Net Ecosystem Exchange) values from Flux Tower data. More details to follow... 
+
+
+
+### Original ReadMe from Naoya Takeishi and Alexandros Kalousis: Physics-integrated variational autoencoders for robust and interpretable generative modeling
 Implementation of the method presented in the following paper:
 
 Naoya Takeishi and Alexandros Kalousis.
