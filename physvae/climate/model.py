@@ -88,17 +88,19 @@ class Decoders(nn.Module):
 
     def forward(self, z_phy, z_aux, T_air):
         # Physics-based model output
-        E_0 = z_phy[:, 0]
+        E_0 = z_phy
         term = (1 / (self.T_ref - self.T_0) - 1 / (T_air - self.T_0))
-        NEE_phy = E_0 * term
+        NEE_phy = torch.exp(E_0 * term) * z_aux
 
-        # Auxiliary model output
-        if self.dim_z_aux > 0:
-            aux_input = torch.cat([z_aux, T_air.view(-1, 1)], dim=1)
-            rb_n = self.func_aux(aux_input)
-            NEE = rb_n * NEE_phy.unsqueeze(1)
-        else:
-            NEE = NEE_phy.unsqueeze(1)
+        NEE = NEE_phy#.unsqueeze(1)
+
+        # # Auxiliary model output
+        # if self.dim_z_aux > 0:
+        #     aux_input = torch.cat([z_aux, T_air.view(-1, 1)], dim=1)
+        #     rb_n = self.func_aux(aux_input)
+        #     NEE = rb_n * NEE_phy.unsqueeze(1)
+        # else:
+        #     NEE = NEE_phy.unsqueeze(1)
 
         return NEE, self.param_x_lnvar
 
@@ -108,6 +110,7 @@ class ClimateVAE(nn.Module):
         super(ClimateVAE, self).__init__()
         self.enc = Encoders(config)
         self.dec = Decoders(config)
+        self.range_E0 = config['range_E0']
 
     def generate_phyonly(self, z_phy, T_air):
         # Physics-based model output
@@ -125,11 +128,11 @@ class ClimateVAE(nn.Module):
 
     def priors(self, n, device):
         # Prior for E_0 (assumed to be normally distributed)
-        prior_z_phy_mean = torch.full((n, 1), 0.0, device=device)
-        prior_z_phy_lnvar = torch.full((n, 1), 0.0, device=device)  # ln(1) = 0 for unit variance
+        prior_z_phy_mean = torch.ones(n,1,device=device) * 0.5 * (self.range_E0[0] + self.range_E0[1])
+        prior_z_phy_lnvar = torch.zeros(n, 1, device=device)  # ln(1) = 0 for unit variance
 
         # Prior for rb_n (assumed to be normally distributed)
-        prior_z_aux_mean = torch.full((n, 1), 0.0, device=device)
+        prior_z_aux_mean = torch.ones(n,1,device=device)
         prior_z_aux_lnvar = torch.full((n, 1), 0.0, device=device)  # ln(1) = 0 for unit variance
 
         prior_z_phy_stat = {'mean': prior_z_phy_mean, 'lnvar': prior_z_phy_lnvar}
@@ -155,6 +158,9 @@ class ClimateVAE(nn.Module):
             z_phy = self.reparameterize(z_phy_mean, z_phy_lnvar)
             z_aux = self.reparameterize(z_aux_mean, z_aux_lnvar)
 
+        z_phy = torch.clamp(z_phy, 50, 500)
+        z_aux = torch.abs(z_aux)
+
         return z_phy, z_aux
 
     def decode(self, z_phy, z_aux, T_air):
@@ -164,5 +170,7 @@ class ClimateVAE(nn.Module):
         z_phy_stat, z_aux_stat, unmixed = self.encode(x)
         z_phy = self.reparameterize(z_phy_stat['mean'], z_phy_stat['lnvar'])
         z_aux = self.reparameterize(z_aux_stat['mean'], z_aux_stat['lnvar'])
+        z_phy = torch.clamp(z_phy, 50, 500)
+        z_aux = torch.abs(z_aux)
         NEE, lnvar = self.decode(z_phy, z_aux, T_air)
         return z_phy_stat, z_aux_stat, NEE, lnvar

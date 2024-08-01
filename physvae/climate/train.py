@@ -1,11 +1,13 @@
 import argparse
 import os.path
+import pickle
 
 import pandas as pd
 import json
 import time
 import numpy as np
 
+from torchviz import make_dot
 import torch
 from torch import optim
 import torch.utils.data
@@ -23,25 +25,25 @@ def set_parser():
     parser.add_argument('--dataname-valid', type=str, default='valid')
 
     # prior knowledge
-    parser.add_argument('--range-omega', type=float, nargs=2, default=[0.0, np.pi])
+    parser.add_argument('--range-E0', type=float, nargs=2, default=[50, 400])
 
     # model (general)
     parser.add_argument('--dim-z-phy', type=int, default=1)
     parser.add_argument('--dim-z-aux', type=int, default=1)
-    parser.add_argument('--activation', type=str, default='elu') #choices=['relu','leakyrelu','elu','softplus','prelu'],
+    parser.add_argument('--activation', type=str, default='relu') #choices=['relu','leakyrelu','elu','softplus','prelu'],
     parser.add_argument('--no-phy', action='store_true', default=False)
 
     # model (decoder)
     parser.add_argument('--x-lnvar', type=float, default=-8.0)
-    parser.add_argument('--hidlayers-aux-dec', type=int, nargs='+', default=[128,])
+    parser.add_argument('--hidlayers-aux-dec', type=int, nargs='+', default=[16,])
 
     # model (encoder)
-    parser.add_argument('--hidlayers-aux-enc', type=int, nargs='+', default=[128,])
-    parser.add_argument('--hidlayers-unmixer', type=int, nargs='+', default=[128,])
-    parser.add_argument('--hidlayers-phy', type=int, nargs='+', default=[128])
+    parser.add_argument('--hidlayers-aux-enc', type=int, nargs='+', default=[16,])
+    parser.add_argument('--hidlayers-unmixer', type=int, nargs='+', default=[16,])
+    parser.add_argument('--hidlayers-phy', type=int, nargs='+', default=[16])
     parser.add_argument('--arch-feat', type=str, default='mlp')
-    parser.add_argument('--num-units-feat', type=int, default=256)
-    parser.add_argument('--hidlayers-feat', type=int, nargs='+', default=[128,])
+    parser.add_argument('--num-units-feat', type=int, default=16)
+    parser.add_argument('--hidlayers-feat', type=int, nargs='+', default=[16,])
     parser.add_argument('--num-rnns-feat', type=int, default=1)
 
     # optimization (base)
@@ -99,17 +101,30 @@ def train(epoch, args, device, loader, model, optimizer):
     model.train()
     logs = {'recerr_sq':.0, 'kldiv':.0, 'unmix':.0, 'dataug':.0, 'lact_dec':.0}
 
+    rb0 = {'mean': [], 'lnvar': []}
+    e0 = {'mean': [], 'lnvar': []}
+
     for batch_idx, (data, T_air, NEE) in enumerate(loader):
         data = data.to(device)
-        T_air = T_air.to(device)
+        T_air = T_air.to(device).reshape((-1, 1))
         batch_size = len(data)
         optimizer.zero_grad()
 
+        NEE = NEE.reshape((-1, 1))
+
+        # yhat = model(data, T_air)
+        # make_dot(yhat[2], params=dict(model.named_parameters())).render("vae.png", format="png")
+
         # inference & reconstruction on original data
         z_phy_stat, z_aux_stat, unmixed = model.encode(data)
+        rb0['mean'].append(z_aux_stat['mean'].detach().mean())
+        rb0['lnvar'].append(z_aux_stat['lnvar'].detach().mean())
+
+        e0['mean'].append(z_phy_stat['mean'].detach().mean())
+        e0['lnvar'].append(z_phy_stat['lnvar'].detach().mean())
+
         z_phy, z_aux = model.draw(z_phy_stat, z_aux_stat, hard_z=False)
         NEE_pred, lnvar = model.decode(z_phy, z_aux, T_air)
-
         # ELBO
         recerr_sq, kldiv = loss_function(args, NEE, z_phy_stat, z_aux_stat, NEE_pred)
 
@@ -135,8 +150,9 @@ def train(epoch, args, device, loader, model, optimizer):
 
         # update model parameters
         loss.backward()
-        if args.grad_clip > 0.0:
-            torch.nn.utils.clip_grad_value_(model.parameters(), args.grad_clip)
+        # if args.grad_clip > 0.0:
+        #     torch.nn.utils.clip_grad_value_(model.parameters(), args.grad_clip)
+
         optimizer.step()
 
         # log
@@ -148,9 +164,9 @@ def train(epoch, args, device, loader, model, optimizer):
 
     for key in logs:
         logs[key] /= len(loader.dataset)
-    print('====> Epoch: {}  Training (rec. err.)^2: {:.4f}  kldiv: {:.4f}  unmix: {:.4f}  dataug: {:.4f}  lact_dec: {:.4f}'.format(
+    print('====> Epoch: {}  Training (rec. err.)^2: {:.6f}  kldiv: {:.6f}  unmix: {:.4f}  dataug: {:.4f}  lact_dec: {:.4f}'.format(
         epoch, logs['recerr_sq'], logs['kldiv'], logs['unmix'], logs['dataug'], logs['lact_dec']))
-    return logs
+    return logs, e0, rb0
 
 
 def valid(epoch, args, device, loader, model):
@@ -159,8 +175,10 @@ def valid(epoch, args, device, loader, model):
     with torch.no_grad():
         for i, (data, T_air, NEE) in enumerate(loader):
             data = data.to(device)
-            T_air = T_air.to(device)
+            T_air = T_air.to(device).reshape((-1, 1))
             batch_size = len(data)
+
+            NEE = NEE.reshape((-1, 1))
 
             # inference & reconstruction on original data
             z_phy_stat, z_aux_stat, unmixed = model.encode(data)
@@ -185,10 +203,14 @@ def create_data_loader(file_path, batch_size=32, shuffle=True, get_dim=False, kw
     # Load the CSV file
     df = pd.read_csv(file_path)
 
+    NEE = df['NEE']
+    Tair = df["Ta"]
+    del df['NEE']
+    del df["Ta"]
     # Convert data to tensors
     data_tensor = torch.tensor(df.values, dtype=torch.float32)
-    ta_col = torch.tensor(df['Ta'].values, dtype=torch.float32)
-    nee_col = torch.tensor(df['NEE'].values, dtype=torch.float32)
+    ta_col = torch.tensor(Tair.values, dtype=torch.float32)
+    nee_col = torch.tensor(NEE.values, dtype=torch.float32)
 
     # Create TensorDataset
     dataset = torch.utils.data.TensorDataset(data_tensor, ta_col, nee_col)
@@ -213,7 +235,6 @@ if __name__ == '__main__':
 
     # set random seed
     torch.manual_seed(args.seed)
-
 
     # load training/validation data
     train_file_path = args.datadir + '/train_night_subset_train.csv'
@@ -253,10 +274,21 @@ if __name__ == '__main__':
     # main iteration
     info = {'bestvalid_epoch':0, 'bestvalid_recerr':1e10}
     dur_total = .0
+
+    rb0s = {'mean': [], 'lnvar': []}
+    e0s = {'mean': [], 'lnvar': []}
+
     for epoch in range(1, args.epochs + 1):
         # training
         start_time = time.time()
-        logs_train = train(epoch, args, device, loader_train, model, optimizer)
+        logs_train, e0, rb0 = train(epoch, args, device, loader_train, model, optimizer)
+
+        rb0s['mean'].append(np.mean(rb0['mean']))
+        rb0s['lnvar'].append(np.mean(rb0['lnvar']))
+
+        e0s['mean'].append(np.mean(e0['mean']))
+        e0s['lnvar'].append(np.mean(e0['lnvar']))
+
         dur_total += time.time() - start_time
 
         # validation
@@ -283,3 +315,8 @@ if __name__ == '__main__':
 
     print()
     print('end training')
+
+    with open("z_phy.pickle", "wb") as fp:
+        pickle.dump(e0s, fp)
+    with open("z_aux.pickle", "wb") as fp:
+        pickle.dump(rb0s, fp)
