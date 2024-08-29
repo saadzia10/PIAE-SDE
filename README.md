@@ -11,7 +11,7 @@ The main approach is implemented in the `pivae_sde` directory.
 
 #### Run the following command from the project root directory
 ```
-conda env create -f env.yaml
+conda env create -f env.yml
 ```
 The `env.yml` is found in the root directory of the project.
 
