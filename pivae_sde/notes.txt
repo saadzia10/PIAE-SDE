@@ -1,0 +1,44 @@
+# OLD MODEL
+
+class PIVAE_SDE(nn.Module):
+    def __init__(self, input_dim, latent_dim, hidden_dim):
+        super(PIVAE_SDE, self).__init__()
+
+        self.Tref = torch.tensor(10).to("cuda")
+        self.T0 = torch.tensor(46.02).to("cuda")
+        
+        # Encoder network
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, latent_dim)
+        )
+        
+        # Decoder network for NEE (u)
+        self.nee_decoder = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, 1)  # Output NEE (u)
+        )
+        
+        # Decoder network for dT/dt (f)
+        self.temp_derivative_decoder = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, 1)  # Output dT/dt
+        )
+        
+        # Decoder network for E0 and rb (k)
+        self.k_decoder = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, 2)  # Output E0 and rb
+        )
