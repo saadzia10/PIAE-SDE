@@ -29,25 +29,30 @@ class AE_Trainer:
             train_loss = []
             test_loss = []
 
-            train_losses = DotMap({"mse_loss_nee": [], "mse_loss_E0": [], "mse_loss_rb": []})
+            train_losses = DotMap(
+                {"loss_nee": [], "loss_E0": [], "loss_rb": [], "loss_alpha": [], "loss_beta": []})
             # Example of iterating over the DataLoader in the training loop
             for batch in train_data_loader:
                 x = batch['X'].to(self.device)
                 k = batch['k'].to(self.device)
-                b = batch['bNEE'].to(self.device).view((-1, 1))
                 nee = batch['NEE'].to(self.device)
 
-                nee_pred, k_pred, z = model(x, b, k)
+                nee_pred, k_pred, z = model(x)
 
                 z_prior = torch.randn_like(z)
                 # Compute loss
-                mse_loss_nee, mse_loss_E0, mse_loss_rb = self.loss_function(nee_pred, nee.view(-1, 1), z, z_prior, k_pred, k,
-                                                                       loss_fn)
-                loss = mse_loss_nee + mse_loss_E0 + mse_loss_rb
+                loss_nee, loss_E0,loss_rb, loss_alpha, loss_beta = self.loss_function(nee_pred,
+                                                                                                      nee.view(-1, 1),
+                                                                                                      z, z_prior,
+                                                                                                      k_pred, k,
+                                                                                                      loss_fn)
+                loss = loss_nee + loss_E0 + loss_rb + loss_alpha + loss_beta
 
-                train_losses.mse_loss_nee.append(mse_loss_nee)
-                train_losses.mse_loss_E0.append(mse_loss_E0)
-                train_losses.mse_loss_rb.append(mse_loss_rb)
+                train_losses.loss_nee.append(loss_nee)
+                train_losses.loss_E0.append(loss_E0)
+                train_losses.loss_rb.append(loss_rb)
+                train_losses.loss_alpha.append(loss_alpha)
+                train_losses.loss_beta.append(loss_beta)
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -56,42 +61,48 @@ class AE_Trainer:
                 train_loss.append(loss.cpu().detach().numpy())
 
             print(colored("Training Loss: {}".format(np.mean(train_loss)), "blue"))
-            self.writer.add_scalar(f"Train Loss MSE", np.mean(train_loss), epoch)
+            self.writer.add_scalar("Train Loss", np.mean(train_loss), epoch)
 
             for col in train_losses.keys():
                 l = [x.cpu().detach().numpy() for x in train_losses[col]]
                 print(col, np.mean(l), end=" ")
-                self.writer.add_scalar(f"Train Loss [{col}] MSE", np.mean(l), epoch)
+                self.writer.add_scalar(f"Train Loss [{col}]", np.mean(l), epoch)
             print("\n")
 
-            test_losses = DotMap({"mse_loss_nee": [], "mse_loss_E0": [], "mse_loss_rb": []})
+            test_losses = DotMap(
+                {"loss_nee": [], "loss_E0": [], "loss_rb": [], "loss_alpha": [], "loss_beta": []})
 
             for batch in test_data_loader:
                 x = batch['X'].to(self.device)
                 k = batch['k'].to(self.device)
-                b = batch['bNEE'].to(self.device).view((-1, 1))
                 nee = batch['NEE'].to(self.device)
 
-                nee_pred, k_pred, z = model(x, b, k)
+                nee_pred, k_pred, z = model(x)
 
                 z_prior = torch.randn_like(z)
                 # Compute loss
-                mse_loss_nee, mse_loss_E0, mse_loss_rb = self.loss_function(nee_pred, nee.view(-1, 1), z, z_prior, k_pred, k,
-                                                                       loss_fn)
-                loss = mse_loss_nee + mse_loss_E0 + mse_loss_rb
+                loss_nee, loss_E0, loss_rb, loss_alpha, loss_beta = self.loss_function(nee_pred,
+                                                                                                      nee.view(-1, 1),
+                                                                                                      z, z_prior,
+                                                                                                      k_pred, k,
+                                                                                                      loss_fn)
+                loss = loss_nee + loss_E0 + loss_rb + loss_alpha + loss_beta
+
                 test_loss.append(loss.cpu().detach().numpy())
 
-                test_losses.mse_loss_nee.append(mse_loss_nee)
-                test_losses.mse_loss_E0.append(mse_loss_E0)
-                test_losses.mse_loss_rb.append(mse_loss_rb)
+                test_losses.loss_nee.append(loss_nee)
+                test_losses.loss_E0.append(loss_E0)
+                test_losses.loss_rb.append(loss_rb)
+                test_losses.loss_alpha.append(loss_alpha)
+                test_losses.loss_beta.append(loss_beta)
 
             print(colored("Test Loss: {}".format(np.mean(test_loss)), "red"))
-            self.writer.add_scalar(f"Test Loss MSE", np.mean(test_loss), epoch)
+            self.writer.add_scalar("Test Loss", np.mean(test_loss), epoch)
 
             for col in test_losses.keys():
                 l = [x.cpu().detach().numpy() for x in test_losses[col]]
                 print(col, np.mean(l), end=" ")
-                self.writer.add_scalar(f"Test Loss [{col}] MSE", np.mean(l), epoch)
+                self.writer.add_scalar(f"Test Loss [{col}]", np.mean(l), epoch)
             print("\n\n")
 
             # Save best model
@@ -103,42 +114,44 @@ class AE_Trainer:
 
             self.scheduler.step(np.mean(test_loss))
             epoch += 1
-            if epoch % 60 == 0:
-                print("Reducing LR")
-                self.optimizer.param_groups[0]['lr'] = 0.0001
 
     def loss_function(self, nee_pred, nee_true, latent, z_prior, k_pred, k_true, loss_fn):
-        # MMD Loss for NEE (u)
-        mmd_loss_nee = loss_fn(nee_pred, nee_true) + loss_fn(latent, z_prior)
+        # MSE Loss for NEE (u)
+        loss_nee = loss_fn(nee_pred, nee_true) + loss_fn(latent, z_prior)
 
-        # MMD Loss for E0 and rb (k)
-        E0_pred, rb_pred = k_pred[:, 0], k_pred[:, 1]
-        E0_true, rb_true = k_true[:, 0], k_true[:, 1]
-        mmd_loss_E0 = loss_fn(E0_pred.view((-1, 1)), E0_true.view((-1, 1)))
-        mmd_loss_rb = loss_fn(rb_pred.view((-1, 1)), rb_true.view((-1, 1)))
+        E0_pred, rb_pred, alpha_pred, beta_pred = k_pred[:, 0], k_pred[:, 1], k_pred[:, 2], k_pred[:, 3]
+        E0_true, rb_true, alpha_true, beta_true = k_true[:, 0], k_true[:, 1], k_true[:, 2], k_true[:, 3]
 
-        return mmd_loss_nee, mmd_loss_E0, mmd_loss_rb
+        loss_E0 = loss_fn(E0_pred.view((-1, 1)), E0_true.view((-1, 1)))
+        loss_rb = loss_fn(rb_pred.view((-1, 1)), rb_true.view((-1, 1)))
+        loss_alpha = loss_fn(alpha_pred.view((-1, 1)), alpha_true.view((-1, 1)))
+        loss_beta = loss_fn(beta_pred.view((-1, 1)), beta_true.view((-1, 1)))
+
+        return loss_nee, loss_E0, loss_rb, loss_alpha, loss_beta
 
     def predict(self, model, test_data_loader):
-        preds = DotMap({"nee": [], "z": [], "E0": [], "rb": []})
-        gt = DotMap({"nee": [], "E0": [], "rb": []})
+        preds = DotMap({"nee": [], "E0": [], "rb": [], "alpha": [], "beta": []})
+        gt = DotMap({"nee": [], "E0": [], "rb": [], "alpha": [], "beta": []})
 
         for batch in test_data_loader:
             x = batch['X'].to(self.device)
             k = batch['k'].to(self.device)
-            b = batch['bNEE'].to(self.device)
             nee = batch['NEE'].to(self.device)
 
-            nee_pred, k_pred, z = model(x, b, k)
-            E0_pred, rb_pred = k_pred[:, 0], k_pred[:, 1]
+            nee_pred, k_pred, z = model(x)
+            E0_pred, rb_pred, alpha_pred, beta_pred = k_pred[:, 0], k_pred[:, 1], k_pred[:, 2], k_pred[:, 3]
 
             preds.nee.extend(nee_pred.cpu().detach().numpy().tolist())
             preds.E0.extend(E0_pred.cpu().detach().numpy().tolist())
             preds.rb.extend(rb_pred.cpu().detach().numpy().tolist())
+            preds.alpha.extend(alpha_pred.cpu().detach().numpy().tolist())
+            preds.beta.extend(beta_pred.cpu().detach().numpy().tolist())
 
             gt.nee.extend(nee.cpu().detach().numpy().tolist())
             gt.E0.extend(k[:, 0].cpu().detach().numpy().tolist())
             gt.rb.extend(k[:, 1].cpu().detach().numpy().tolist())
+            gt.alpha.extend(k[:, 2].cpu().detach().numpy().tolist())
+            gt.beta.extend(k[:, 3].cpu().detach().numpy().tolist())
 
         for col in preds:
             preds[col] = np.array(preds[col])
@@ -148,7 +161,6 @@ class AE_Trainer:
             gt[col] = np.array(gt[col])
             if len(gt[col].shape) > 1 and gt[col].shape[1] == 1:
                 gt[col] = gt[col].flatten()
-        return gt, preds
 
 def initialize_weights(layer):
     if isinstance(layer, nn.Linear):
@@ -165,8 +177,6 @@ class AE_Model(nn.Module):
         self.input_dim = input_dim
         self.latent_dim = latent_dim
         self.activation = activation
-        self.Tref = torch.tensor(10).to(device)
-        self.T0 = torch.tensor(46.02).to(device)
         self.encoder_dims = encoder_dims
         self.decoder_dims = decoder_dims
         self.device = device
@@ -181,9 +191,9 @@ class AE_Model(nn.Module):
         modules.append(nn.Linear(self.decoder_dims[-1], 1))
         self.nee_decoder = nn.Sequential(*modules)
 
-        # Decoder network for E0 and rb
+        # Decoder network for E0, rb, alpha and beta
         modules = self.append_linear_modules(self.latent_dim, self.decoder_dims)
-        modules.append(nn.Linear(self.decoder_dims[-1], 2))
+        modules.append(nn.Linear(self.decoder_dims[-1], 4))
         self.k_decoder = nn.Sequential(*modules)
 
     def append_linear_modules(self, in_dim, dims):

@@ -109,15 +109,15 @@ class AE_Trainer:
 
     def loss_function(self, nee_pred, nee_true, latent, z_prior, k_pred, k_true, loss_fn):
         # MMD Loss for NEE (u)
-        mmd_loss_nee = loss_fn(nee_pred, nee_true) + loss_fn(latent, z_prior)
+        loss_nee = loss_fn(nee_pred, nee_true) + loss_fn(latent, z_prior)
 
         # MMD Loss for E0 and rb (k)
         E0_pred, rb_pred = k_pred[:, 0], k_pred[:, 1]
         E0_true, rb_true = k_true[:, 0], k_true[:, 1]
-        mmd_loss_E0 = loss_fn(E0_pred.view((-1, 1)), E0_true.view((-1, 1)))
-        mmd_loss_rb = loss_fn(rb_pred.view((-1, 1)), rb_true.view((-1, 1)))
+        loss_E0 = loss_fn(E0_pred.view((-1, 1)), E0_true.view((-1, 1)))
+        loss_rb = loss_fn(rb_pred.view((-1, 1)), rb_true.view((-1, 1)))
 
-        return mmd_loss_nee, mmd_loss_E0, mmd_loss_rb
+        return loss_nee, loss_E0, loss_rb
 
     def predict(self, model, test_data_loader):
         preds = DotMap({"nee": [], "z": [], "E0": [], "rb": []})
