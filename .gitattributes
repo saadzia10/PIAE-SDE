@@ -2,3 +2,4 @@ data_manipulation/complete_data.parquet filter=lfs diff=lfs merge=lfs -text
 data_manipulation/final_day_data.parquet filter=lfs diff=lfs merge=lfs -text
 data_manipulation/final_night_data.parquet filter=lfs diff=lfs merge=lfs -text
 data_manipulation/half-hourly_2005-2019.zip filter=lfs diff=lfs merge=lfs -text
+data_manipulation/other_sites/** filter=lfs diff=lfs merge=lfs -text
