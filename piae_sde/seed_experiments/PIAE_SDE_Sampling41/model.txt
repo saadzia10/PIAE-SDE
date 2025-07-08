@@ -1,0 +1,41 @@
+PIAE_SDE_Sampling_Model(
+  (encoder): Sequential(
+    (0): Linear(in_features=18, out_features=16, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=16, out_features=16, bias=True)
+    (3): ReLU()
+    (4): Linear(in_features=16, out_features=32, bias=True)
+  )
+  (nee_decoder): Sequential(
+    (0): Linear(in_features=32, out_features=16, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=16, out_features=16, bias=True)
+    (3): ReLU()
+    (4): Linear(in_features=16, out_features=1, bias=True)
+  )
+  (fc_mu): Sequential(
+    (0): Linear(in_features=32, out_features=4, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=4, out_features=1, bias=True)
+  )
+  (fc_logvar): Sequential(
+    (0): Linear(in_features=32, out_features=4, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=4, out_features=1, bias=True)
+  )
+  (temp_derivative_decoder): Sequential(
+    (0): Linear(in_features=32, out_features=16, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=16, out_features=16, bias=True)
+    (3): ReLU()
+    (4): Linear(in_features=16, out_features=1, bias=True)
+  )
+  (k_decoder): Sequential(
+    (0): Linear(in_features=32, out_features=16, bias=True)
+    (1): LeakyReLU(negative_slope=0.01)
+    (2): Linear(in_features=16, out_features=16, bias=True)
+    (3): LeakyReLU(negative_slope=0.01)
+    (4): Linear(in_features=16, out_features=2, bias=True)
+    (5): LeakyReLU(negative_slope=0.01)
+  )
+)
