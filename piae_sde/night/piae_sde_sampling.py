@@ -69,6 +69,14 @@ class PIAE_SDE_Sampling_Trainer:
 
                 loss = mse_factor * mse_loss + mmd_factor * noise_loss + mmd_factor * (mmd_loss_nee + mmd_loss_bnee)
 
+                # print("TEST")
+                # for name, p in model.named_parameters():
+                #     print(name, p.data.mean().item(), p.data.std().item())
+                # print("LOSS: ", loss)
+                # print("SURGERY")
+                # print("NEE", nee, bnee_pred, f_pred)
+
+
                 train_losses.mse_loss_nee.append(mse_loss_nee)
                 train_losses.mmd_loss_nee.append(mmd_loss_nee)
                 train_losses.mse_loss_bnee.append(mse_loss_bnee)
@@ -266,6 +274,27 @@ def initialize_weights(layer):
         init.zeros_(layer.bias)
 
 
+class ResidualBlock(nn.Module):
+    def __init__(self, in_dim, out_dim, activation=nn.ReLU, use_norm=True):
+        super(ResidualBlock, self).__init__()
+        self.use_projection = (in_dim != out_dim)
+        self.fc = nn.Linear(in_dim, out_dim)
+        self.activation = activation()
+        self.use_norm = use_norm
+        if self.use_norm:
+            self.norm = nn.BatchNorm1d(out_dim)
+        if self.use_projection:
+            self.projection = nn.Linear(in_dim, out_dim)
+    
+    def forward(self, x):
+        residual = self.projection(x) if self.use_projection else x
+        out = self.fc(x)
+        if self.use_norm:
+            out = self.norm(out)
+        out = self.activation(out)
+        return out + residual
+        
+
 class PIAE_SDE_Sampling_Model(nn.Module):
     def __init__(self, input_dim, latent_dim, encoder_dims, decoder_dims, noise_dims=[4], activation=nn.ReLU,
                  hard_z=False, device="mps"):
@@ -281,16 +310,33 @@ class PIAE_SDE_Sampling_Model(nn.Module):
         self.decoder_dims = decoder_dims
         self.noise_dims = noise_dims
 
-        # Encoder network
+        # # Encoder network
         modules = self.append_linear_modules(self.input_dim, self.encoder_dims)
         modules.append(nn.Linear(self.encoder_dims[-1], self.latent_dim))
         print(modules)
         self.encoder = nn.Sequential(*modules)
 
+        # Encoder network as a stack of residual blocks
+        # modules = []
+        # in_dim = input_dim
+        # for dim in encoder_dims:
+        #     modules.append(ResidualBlock(in_dim, dim, activation=activation, use_norm=True))
+        #     in_dim = dim
+        # # Map to latent space
+        # modules.append(nn.Linear(in_dim, latent_dim))
+        # self.encoder = nn.Sequential(*modules)
+
         # Decoder network for NEE (u)
         modules = self.append_linear_modules(self.latent_dim, self.decoder_dims)
         modules.append(nn.Linear(self.decoder_dims[-1], 1))
         self.nee_decoder = nn.Sequential(*modules)
+        # modules = []
+        # in_dim = latent_dim
+        # for dim in decoder_dims:
+        #     modules.append(ResidualBlock(in_dim, dim, activation=activation, use_norm=True))
+        #     in_dim = dim
+        # modules.append(nn.Linear(in_dim, 1))
+        # self.nee_decoder = nn.Sequential(*modules)
 
         # Noise
         modules = self.append_linear_modules(self.latent_dim, self.noise_dims)
@@ -304,12 +350,30 @@ class PIAE_SDE_Sampling_Model(nn.Module):
         modules = self.append_linear_modules(self.latent_dim, self.decoder_dims)
         modules.append(nn.Linear(self.decoder_dims[-1], 1))
         self.temp_derivative_decoder = nn.Sequential(*modules)
+        # modules = []
+        # in_dim = latent_dim
+        # for dim in decoder_dims:
+        #     modules.append(ResidualBlock(in_dim, dim, activation=activation, use_norm=True))
+        #     in_dim = dim
+        # modules.append(nn.Linear(in_dim, 1))
+        # self.temp_derivative_decoder = nn.Sequential(*modules)
 
         # Decoder network for E0 and rb
         modules = self.append_linear_modules(self.latent_dim, self.decoder_dims, nn.LeakyReLU(negative_slope=0.01))
         modules.append(nn.Linear(self.decoder_dims[-1], 2))
         modules.append(nn.LeakyReLU(negative_slope=0.01))
         self.k_decoder = nn.Sequential(*modules)
+        # modules = []
+        # in_dim = latent_dim
+        # # Using LeakyReLU here as in your original code for k_decoder
+        # for dim in decoder_dims:
+        #     modules.append(
+        #         ResidualBlock(in_dim, dim, activation=lambda: nn.LeakyReLU(negative_slope=0.01), use_norm=True))
+        #     in_dim = dim
+        # modules.append(nn.Linear(in_dim, 2))
+        # modules.append(nn.LeakyReLU(negative_slope=0.01))
+        # self.k_decoder = nn.Sequential(*modules)
+
 
     def append_linear_modules(self, in_dim, dims, activation=None):
         modules = []
@@ -325,7 +389,8 @@ class PIAE_SDE_Sampling_Model(nn.Module):
         return mu + eps * std
 
     def forward(self, x, b, k, T):
-        input_ = torch.cat((x, b.view(x.shape[0], 1), k), dim=1).to(self.device)
+        # input_ = torch.cat((x, b.view(x.shape[0], 1), k), dim=1).to(self.device)
+        input_ = torch.cat((x, k), dim=1).to(self.device)
         z = self.encoder(input_)
         mu = self.fc_mu(z)
         logvar = self.fc_logvar(z)
