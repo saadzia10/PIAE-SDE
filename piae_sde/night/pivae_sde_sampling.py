@@ -212,7 +212,7 @@ class PIVAE_SDE_Sampling_Trainer:
             nee = batch['NEE'].to(self.device)
 
             input_ = torch.cat((x, b.view(x.shape[0], 1), k), dim=1).to(self.device)
-            h = self.encoder(input_)
+            h = model.encoder(input_)
             latent_mu = self.latent_mu(h)
             latent_logvar = self.latent_logvar(h)
             z = self.reparameterize(latent_mu, latent_logvar)
