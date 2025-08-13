@@ -1,3 +1,4 @@
+piae_sde/night/pivae_sde_sampling.py
 from mmd_loss import MMD_loss
 import numpy as np
 
@@ -213,9 +214,9 @@ class PIVAE_SDE_Sampling_Trainer:
 
             input_ = torch.cat((x, b.view(x.shape[0], 1), k), dim=1).to(self.device)
             h = model.encoder(input_)
-            latent_mu = self.latent_mu(h)
-            latent_logvar = self.latent_logvar(h)
-            z = self.reparameterize(latent_mu, latent_logvar)
+            latent_mu = model.latent_mu(h)
+            latent_logvar = model.latent_logvar(h)
+            z = model.reparameterize(latent_mu, latent_logvar)
         
             noise_m = model.fc_mu(z)
             noise_lv = model.fc_logvar(z)
