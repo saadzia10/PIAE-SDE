@@ -389,8 +389,7 @@ class PIAE_SDE_Sampling_Model(nn.Module):
         return mu + eps * std
 
     def forward(self, x, b, k, T):
-        # input_ = torch.cat((x, b.view(x.shape[0], 1), k), dim=1).to(self.device)
-        input_ = torch.cat((x, k), dim=1).to(self.device)
+        input_ = torch.cat((x, b.view(x.shape[0], 1), k), dim=1).to(self.device)
         z = self.encoder(input_)
         mu = self.fc_mu(z)
         logvar = self.fc_logvar(z)

@@ -1,0 +1,29 @@
+    def loss_function(self, nee_pred, nee_true, bnee_pred, bnee_true, noise, noise_prior, temp_pred, temp_true, E0_rb_pred,
+                      E0_rb_true, f_pred, f_true, physics_residual, loss_fn):
+        # Loss for NEE (u)
+        loss_nee = loss_fn(nee_pred, nee_true)
+
+        loss_bnee = loss_fn(bnee_pred, bnee_true)
+
+        # Loss for dNEE (f)
+        f_loss = loss_fn(f_pred, f_true)
+
+        # MMD Loss on Noise
+        noise_loss = MMD_loss()(noise, noise_prior)
+
+        # Loss for E0 and rb (k)
+        E0_pred, rb_pred = E0_rb_pred[:, 0], E0_rb_pred[:, 1]
+        E0_true, rb_true = E0_rb_true[:, 0], E0_rb_true[:, 1]
+
+        loss_E0 = loss_fn(E0_pred.view((-1, 1)), E0_true.view((-1, 1)))
+        loss_rb = loss_fn(rb_pred.view((-1, 1)), rb_true.view((-1, 1)))
+
+        # loss for temperature derivative (f)
+        temp_loss = loss_fn(temp_pred.view((-1, 1)), temp_true.view((-1, 1)))
+
+        # Physics-based loss (ensure the solution satisfies the physics model)
+        physics_loss = torch.mean(physics_residual ** 2)
+
+        # Total loss
+        # total_loss = loss_nee + loss_E0 + loss_rb + temp_loss + physics_loss + f_loss
+        return loss_nee, loss_bnee, loss_E0, loss_rb, temp_loss, physics_loss, f_loss, noise_loss
